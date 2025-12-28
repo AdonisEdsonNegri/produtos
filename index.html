@@ -201,7 +201,7 @@
     <div class="container">
         <h1>📦 Gestão de Produtos</h1>
 
-        <button class="btn btn-add" onclick="abrirModalAdicionar()">➕ Adicionar Produto</button>
+        <button class="btn btn-add" id="btnAdicionar">➕ Adicionar Produto</button>
 
         <div id="mensagem"></div>
         <div id="loading" class="loading" style="display:none;">Carregando...</div>
@@ -222,12 +222,11 @@
         </table>
     </div>
 
-    <!-- Modal -->
     <div id="modal" class="modal">
         <div class="modal-content">
-            <span class="close" onclick="fecharModal()">&times;</span>
+            <span class="close" id="btnFechar">&times;</span>
             <h2 id="modalTitulo">Adicionar Produto</h2>
-            <form id="formProduto" onsubmit="salvarProduto(event)">
+            <form id="formProduto">
                 <input type="hidden" id="produtoId">
 
                 <div class="form-group">
@@ -262,25 +261,32 @@
 
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
     <script>
-        // Configurar Supabase
         const SUPABASE_URL = 'https://lutwlisdkciaslvqauyh.supabase.co';
-        const SUPABASE_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imx1dHdsaXNka2NpYXNsdnFhdXloIiwicm9sZSI6ImFub24iLCJpYXQiOjE3MzU0MDk3MjgsImV4cCI6MjA1MDk4NTcyOH0.xBHSheRswag5UpGdqBvN1g_hNLnSiZ_yMJdTUkRAZ1g';
+        const SUPABASE_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imx1dHdsaXNka2NpYXNsdnFhdXloIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjY4ODgxODYsImV4cCI6MjA4MjQ2NDE4Nn0.CYAhmx4HxXjE6yBIIascPb0Y4siG-oUsGUfWP83am6Q';
         
-        const supabase = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
-
+        const sb = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
         let modoEdicao = false;
 
-        // Carregar produtos ao iniciar
-        window.onload = function() {
+        window.addEventListener('DOMContentLoaded', function() {
             carregarProdutos();
-        };
+            
+            document.getElementById('btnAdicionar').addEventListener('click', abrirModalAdicionar);
+            document.getElementById('btnFechar').addEventListener('click', fecharModal);
+            document.getElementById('formProduto').addEventListener('submit', salvarProduto);
+            
+            window.addEventListener('click', function(event) {
+                const modal = document.getElementById('modal');
+                if (event.target == modal) {
+                    fecharModal();
+                }
+            });
+        });
 
-        // Carregar produtos
         async function carregarProdutos() {
             document.getElementById('loading').style.display = 'block';
             
             try {
-                const { data, error } = await supabase
+                const { data, error } = await sb
                     .from('produtos')
                     .select('*')
                     .order('id_produto', { ascending: true });
@@ -295,7 +301,6 @@
             }
         }
 
-        // Exibir produtos na tabela
         function exibirProdutos(produtos) {
             const tbody = document.getElementById('corpoTabela');
             tbody.innerHTML = '';
@@ -314,20 +319,18 @@
                     <td>R$ ${formatarNumero(produto.preco_unitario)}</td>
                     <td>${produto.observacoes || '-'}</td>
                     <td class="actions">
-                        <button class="btn btn-small btn-edit" onclick="editarProduto(${produto.id_produto})">✏️ Editar</button>
-                        <button class="btn btn-small btn-delete" onclick="excluirProduto(${produto.id_produto})">🗑️ Excluir</button>
+                        <button class="btn btn-small btn-edit" data-id="${produto.id_produto}" onclick="editarProduto(${produto.id_produto})">✏️ Editar</button>
+                        <button class="btn btn-small btn-delete" data-id="${produto.id_produto}" onclick="excluirProduto(${produto.id_produto})">🗑️ Excluir</button>
                     </td>
                 `;
                 tbody.appendChild(tr);
             });
         }
 
-        // Formatar número com vírgula
         function formatarNumero(valor) {
             return parseFloat(valor).toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
         }
 
-        // Abrir modal para adicionar
         function abrirModalAdicionar() {
             modoEdicao = false;
             document.getElementById('modalTitulo').textContent = 'Adicionar Produto';
@@ -337,13 +340,12 @@
             document.getElementById('modal').style.display = 'block';
         }
 
-        // Editar produto
         async function editarProduto(id) {
             modoEdicao = true;
             document.getElementById('modalTitulo').textContent = 'Editar Produto';
 
             try {
-                const { data, error } = await supabase
+                const { data, error } = await sb
                     .from('produtos')
                     .select('*')
                     .eq('id_produto', id)
@@ -365,7 +367,6 @@
             }
         }
 
-        // Salvar produto (adicionar ou editar)
         async function salvarProduto(event) {
             event.preventDefault();
 
@@ -379,8 +380,7 @@
 
             try {
                 if (modoEdicao) {
-                    // Atualizar
-                    const { error } = await supabase
+                    const { error } = await sb
                         .from('produtos')
                         .update(produto)
                         .eq('id_produto', produto.id_produto);
@@ -388,8 +388,7 @@
                     if (error) throw error;
                     mostrarMensagem('Produto atualizado com sucesso!', 'success');
                 } else {
-                    // Inserir
-                    const { error } = await supabase
+                    const { error } = await sb
                         .from('produtos')
                         .insert([produto]);
 
@@ -404,14 +403,13 @@
             }
         }
 
-        // Excluir produto
         async function excluirProduto(id) {
             if (!confirm('Tem certeza que deseja excluir este produto?')) {
                 return;
             }
 
             try {
-                const { error } = await supabase
+                const { error } = await sb
                     .from('produtos')
                     .delete()
                     .eq('id_produto', id);
@@ -425,12 +423,10 @@
             }
         }
 
-        // Fechar modal
         function fecharModal() {
             document.getElementById('modal').style.display = 'none';
         }
 
-        // Mostrar mensagem
         function mostrarMensagem(texto, tipo) {
             const div = document.getElementById('mensagem');
             div.className = tipo;
@@ -440,14 +436,6 @@
             setTimeout(() => {
                 div.style.display = 'none';
             }, 3000);
-        }
-
-        // Fechar modal ao clicar fora
-        window.onclick = function(event) {
-            const modal = document.getElementById('modal');
-            if (event.target == modal) {
-                fecharModal();
-            }
         }
     </script>
 </body>
