@@ -34,6 +34,13 @@
             font-size: 2.5em;
         }
 
+        .btn-toolbar {
+            display: flex;
+            gap: 10px;
+            margin-bottom: 20px;
+            flex-wrap: wrap;
+        }
+
         .btn {
             background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
             color: white;
@@ -51,8 +58,12 @@
             box-shadow: 0 5px 15px rgba(0,0,0,0.3);
         }
 
-        .btn-add {
-            margin-bottom: 20px;
+        .btn-filtros {
+            background: linear-gradient(135deg, #f093fb 0%, #f5576c 100%);
+        }
+
+        .btn-relatorio {
+            background: linear-gradient(135deg, #fa709a 0%, #fee140 100%);
         }
 
         .btn-small {
@@ -78,15 +89,18 @@
             width: 100%;
             height: 100%;
             background-color: rgba(0,0,0,0.5);
+            overflow-y: auto;
         }
 
         .modal-content {
             background-color: white;
-            margin: 5% auto;
+            margin: 30px auto;
             padding: 30px;
             border-radius: 15px;
             width: 90%;
             max-width: 500px;
+            max-height: 90vh;
+            overflow-y: auto;
             box-shadow: 0 10px 40px rgba(0,0,0,0.3);
         }
 
@@ -113,7 +127,7 @@
             font-weight: bold;
         }
 
-        input, textarea {
+        input, textarea, select {
             width: 100%;
             padding: 12px;
             border: 2px solid #ddd;
@@ -122,7 +136,7 @@
             transition: border-color 0.3s;
         }
 
-        input:focus, textarea:focus {
+        input:focus, textarea:focus, select:focus {
             outline: none;
             border-color: #667eea;
         }
@@ -130,6 +144,25 @@
         textarea {
             resize: vertical;
             min-height: 80px;
+        }
+
+        .filtro-ativo {
+            background: #e3f2fd;
+            padding: 15px;
+            border-radius: 8px;
+            margin-bottom: 15px;
+            border-left: 4px solid #667eea;
+        }
+
+        .filtro-ativo strong {
+            color: #667eea;
+        }
+
+        .btn-limpar-filtro {
+            background: #999;
+            padding: 6px 12px;
+            font-size: 12px;
+            margin-left: 10px;
         }
 
         table {
@@ -181,6 +214,39 @@
             margin: 10px 0;
         }
 
+        .dropdown {
+            position: relative;
+            display: inline-block;
+        }
+
+        .dropdown-content {
+            display: none;
+            position: absolute;
+            background-color: white;
+            min-width: 250px;
+            box-shadow: 0 8px 16px rgba(0,0,0,0.2);
+            border-radius: 8px;
+            z-index: 1;
+            padding: 10px;
+        }
+
+        .dropdown-content a {
+            color: #333;
+            padding: 12px 16px;
+            text-decoration: none;
+            display: block;
+            border-radius: 5px;
+            transition: background 0.2s;
+        }
+
+        .dropdown-content a:hover {
+            background-color: #f1f1f1;
+        }
+
+        .dropdown:hover .dropdown-content {
+            display: block;
+        }
+
         @media (max-width: 768px) {
             table {
                 font-size: 14px;
@@ -194,6 +260,10 @@
                 padding: 6px 12px;
                 font-size: 12px;
             }
+
+            .btn-toolbar {
+                flex-direction: column;
+            }
         }
     </style>
 </head>
@@ -201,7 +271,25 @@
     <div class="container">
         <h1>📦 Gestão de Produtos</h1>
 
-        <button class="btn btn-add" id="btnAdicionar">➕ Adicionar Produto</button>
+        <div class="btn-toolbar">
+            <button class="btn" id="btnAdicionar">➕ Novo Produto</button>
+            
+            <div class="dropdown">
+                <button class="btn btn-filtros">🔍 Filtros</button>
+                <div class="dropdown-content">
+                    <a href="#" id="filtroId">🔢 Por Identificador</a>
+                    <a href="#" id="filtroDescricao">📝 Por Descrição (contém)</a>
+                    <a href="#" id="filtroSaldoZero">📊 Produtos com Saldo = 0</a>
+                </div>
+            </div>
+
+            <button class="btn btn-relatorio" id="btnRelatorio">📄 Gerar Relatório</button>
+        </div>
+
+        <div id="filtroAtivo" class="filtro-ativo" style="display:none;">
+            <strong>Filtro ativo:</strong> <span id="textoFiltro"></span>
+            <button class="btn btn-limpar-filtro" id="btnLimparFiltro">✖ Limpar</button>
+        </div>
 
         <div id="mensagem"></div>
         <div id="loading" class="loading" style="display:none;">Carregando...</div>
@@ -259,6 +347,17 @@
         </div>
     </div>
 
+    <div id="modalFiltro" class="modal">
+        <div class="modal-content">
+            <span class="close" id="btnFecharFiltro">&times;</span>
+            <h2 id="tituloFiltro">Filtrar Produtos</h2>
+            <form id="formFiltro">
+                <div class="form-group" id="campoFiltro"></div>
+                <button type="submit" class="btn">Aplicar Filtro</button>
+            </form>
+        </div>
+    </div>
+
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
     <script>
         const SUPABASE_URL = 'https://lutwlisdkciaslvqauyh.supabase.co';
@@ -266,18 +365,41 @@
         
         const sb = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
         let modoEdicao = false;
+        let filtroAtual = null;
+        let produtosFiltrados = [];
 
         window.addEventListener('DOMContentLoaded', function() {
             carregarProdutos();
             
             document.getElementById('btnAdicionar').addEventListener('click', abrirModalAdicionar);
             document.getElementById('btnFechar').addEventListener('click', fecharModal);
+            document.getElementById('btnFecharFiltro').addEventListener('click', fecharModalFiltro);
             document.getElementById('formProduto').addEventListener('submit', salvarProduto);
+            document.getElementById('formFiltro').addEventListener('submit', aplicarFiltro);
+            document.getElementById('btnLimparFiltro').addEventListener('click', limparFiltro);
+            document.getElementById('btnRelatorio').addEventListener('click', gerarRelatorio);
+            
+            document.getElementById('filtroId').addEventListener('click', function(e) {
+                e.preventDefault();
+                abrirModalFiltro('id');
+            });
+            
+            document.getElementById('filtroDescricao').addEventListener('click', function(e) {
+                e.preventDefault();
+                abrirModalFiltro('descricao');
+            });
+            
+            document.getElementById('filtroSaldoZero').addEventListener('click', function(e) {
+                e.preventDefault();
+                aplicarFiltroSaldoZero();
+            });
             
             window.addEventListener('click', function(event) {
-                const modal = document.getElementById('modal');
-                if (event.target == modal) {
+                if (event.target.id === 'modal') {
                     fecharModal();
+                }
+                if (event.target.id === 'modalFiltro') {
+                    fecharModalFiltro();
                 }
             });
         });
@@ -293,6 +415,7 @@
 
                 if (error) throw error;
 
+                produtosFiltrados = data;
                 exibirProdutos(data);
             } catch (error) {
                 mostrarMensagem('Erro ao carregar produtos: ' + error.message, 'error');
@@ -306,7 +429,7 @@
             tbody.innerHTML = '';
 
             if (produtos.length === 0) {
-                tbody.innerHTML = '<tr><td colspan="6" style="text-align:center;">Nenhum produto cadastrado</td></tr>';
+                tbody.innerHTML = '<tr><td colspan="6" style="text-align:center;">Nenhum produto encontrado</td></tr>';
                 return;
             }
 
@@ -319,8 +442,8 @@
                     <td>R$ ${formatarNumero(produto.preco_unitario)}</td>
                     <td>${produto.observacoes || '-'}</td>
                     <td class="actions">
-                        <button class="btn btn-small btn-edit" data-id="${produto.id_produto}" onclick="editarProduto(${produto.id_produto})">✏️ Editar</button>
-                        <button class="btn btn-small btn-delete" data-id="${produto.id_produto}" onclick="excluirProduto(${produto.id_produto})">🗑️ Excluir</button>
+                        <button class="btn btn-small btn-edit" onclick="editarProduto(${produto.id_produto})">✏️</button>
+                        <button class="btn btn-small btn-delete" onclick="excluirProduto(${produto.id_produto})">🗑️</button>
                     </td>
                 `;
                 tbody.appendChild(tr);
@@ -423,8 +546,161 @@
             }
         }
 
+        function abrirModalFiltro(tipo) {
+            filtroAtual = { tipo: tipo };
+            const campoFiltro = document.getElementById('campoFiltro');
+            
+            if (tipo === 'id') {
+                document.getElementById('tituloFiltro').textContent = 'Filtrar por ID';
+                campoFiltro.innerHTML = `
+                    <label for="valorFiltro">ID do Produto:</label>
+                    <input type="number" id="valorFiltro" required>
+                `;
+            } else if (tipo === 'descricao') {
+                document.getElementById('tituloFiltro').textContent = 'Filtrar por Descrição';
+                campoFiltro.innerHTML = `
+                    <label for="valorFiltro">Texto contido na descrição:</label>
+                    <input type="text" id="valorFiltro" required>
+                `;
+            }
+            
+            document.getElementById('modalFiltro').style.display = 'block';
+        }
+
+        async function aplicarFiltro(event) {
+            event.preventDefault();
+            const valor = document.getElementById('valorFiltro').value;
+            
+            try {
+                const { data, error } = await sb
+                    .from('produtos')
+                    .select('*')
+                    .order('id_produto', { ascending: true });
+
+                if (error) throw error;
+
+                let resultado;
+                let textoFiltro;
+
+                if (filtroAtual.tipo === 'id') {
+                    resultado = data.filter(p => p.id_produto == valor);
+                    textoFiltro = `ID = ${valor}`;
+                } else if (filtroAtual.tipo === 'descricao') {
+                    resultado = data.filter(p => p.descricao.toLowerCase().includes(valor.toLowerCase()));
+                    textoFiltro = `Descrição contém "${valor}"`;
+                }
+
+                produtosFiltrados = resultado;
+                exibirProdutos(resultado);
+                mostrarFiltroAtivo(textoFiltro);
+                fecharModalFiltro();
+            } catch (error) {
+                mostrarMensagem('Erro ao aplicar filtro: ' + error.message, 'error');
+            }
+        }
+
+        async function aplicarFiltroSaldoZero() {
+            try {
+                const { data, error } = await sb
+                    .from('produtos')
+                    .select('*')
+                    .eq('saldo_atual', 0)
+                    .order('id_produto', { ascending: true });
+
+                if (error) throw error;
+
+                produtosFiltrados = data;
+                exibirProdutos(data);
+                mostrarFiltroAtivo('Saldo = 0');
+            } catch (error) {
+                mostrarMensagem('Erro ao aplicar filtro: ' + error.message, 'error');
+            }
+        }
+
+        function mostrarFiltroAtivo(texto) {
+            document.getElementById('textoFiltro').textContent = texto;
+            document.getElementById('filtroAtivo').style.display = 'block';
+        }
+
+        function limparFiltro() {
+            document.getElementById('filtroAtivo').style.display = 'none';
+            filtroAtual = null;
+            carregarProdutos();
+        }
+
+        function gerarRelatorio() {
+            if (produtosFiltrados.length === 0) {
+                mostrarMensagem('Não há produtos para gerar relatório!', 'error');
+                return;
+            }
+
+            let html = `
+                <html>
+                <head>
+                    <title>Relatório de Produtos</title>
+                    <style>
+                        body { font-family: Arial; padding: 20px; }
+                        h1 { color: #667eea; }
+                        table { width: 100%; border-collapse: collapse; margin-top: 20px; }
+                        th, td { border: 1px solid #ddd; padding: 12px; text-align: left; }
+                        th { background: #667eea; color: white; }
+                        .total { font-weight: bold; background: #f0f0f0; }
+                    </style>
+                </head>
+                <body>
+                    <h1>📄 Relatório de Produtos</h1>
+                    <p><strong>Data:</strong> ${new Date().toLocaleDateString('pt-BR')}</p>
+                    <p><strong>Total de produtos:</strong> ${produtosFiltrados.length}</p>
+                    <table>
+                        <thead>
+                            <tr>
+                                <th>ID</th>
+                                <th>Descrição</th>
+                                <th>Saldo Atual</th>
+                                <th>Preço Unitário</th>
+                                <th>Valor Total</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+            `;
+
+            let valorTotal = 0;
+            produtosFiltrados.forEach(p => {
+                const total = p.saldo_atual * p.preco_unitario;
+                valorTotal += total;
+                html += `
+                    <tr>
+                        <td>${p.id_produto}</td>
+                        <td>${p.descricao}</td>
+                        <td>${formatarNumero(p.saldo_atual)}</td>
+                        <td>R$ ${formatarNumero(p.preco_unitario)}</td>
+                        <td>R$ ${formatarNumero(total)}</td>
+                    </tr>
+                `;
+            });
+
+            html += `
+                        <tr class="total">
+                            <td colspan="4">VALOR TOTAL EM ESTOQUE</td>
+                            <td>R$ ${formatarNumero(valorTotal)}</td>
+                        </tr>
+                    </tbody>
+                </table>
+                </body>
+                </html>
+            `;
+
+            const janela = window.open('', '_blank');
+            janela.document.write(html);
+            janela.document.close();
+        }
+
         function fecharModal() {
             document.getElementById('modal').style.display = 'none';
+        }
+
+        function fecharModalFiltro() {
+            document.getElementById('modalFiltro').style.display = 'none';
         }
 
         function mostrarMensagem(texto, tipo) {
